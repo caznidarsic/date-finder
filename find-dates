@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+from os import walk
+import argparse
+import re
+
+
+# list containing the valid date formats to be searched
+date_formats = [
+	r'(?:\d{2}|\d{4})-\d{1,2}-\d{1,2}',  # YYYY-MM-DD or YY-M-D or YY-MM-D etc.
+    r'\d{1,2}\/\d{1,2}\/(?:\d{2}|\d{4})',  # MM/DD/YYYY or DD/MM/YYYY etc.
+    r'\d{1,2}\.\d{1,2}\.(?:\d{2}|\d{4})',  # MM.DD.YYYY or DD.MM.YYYY etc.
+    r'^(?:0\d|\d|10|11|12)\/(?:\d{2}|(?:19|20)\d\d)$', # MM/YYYY or MM/YY or M/YY or DD/MM etc.
+    r'January|February|March|April|May|June|July|August|September|October|November|December',  # January, February, March...
+    r'\n(?:19|20)\d\d\.?\s', # years between 1900 and 2099
+]
+
+
+def containsDate(line):
+	for date_format in date_formats:
+		if re.search(date_format, line):
+			return True
+	return False
+
+
+def isValidPath(path):
+	if os.path.isfile(path) or os.path.isdir(path):
+		return path
+	raise argparse.ArgumentTypeError(f"find-dates: error: {path} is not a valid path")
+
+
+# checks validity of all file extensions in user-provided ignore list
+def isValidIgnoreList(ignore_string):
+	ignore_list = ignore_string.split(',')
+	for extension in ignore_list:
+		if not re.match("^\.[A-Za-z0-9]+$", extension):
+			raise argparse.ArgumentTypeError(f"{extension} is not a valid file extension")
+	# print("ignore_list: " + str(ignore_list))
+	return ignore_list
+
+
+# checks if a file path represents a text file
+def isTextFile(filePath):
+	try:
+		file = open(filePath)
+		if file.readline():
+			return True
+		return False
+	except UnicodeDecodeError:
+		return False
+
+
+# prints file contents
+def printFileContents(filepath):
+	file = open(filepath)
+	lines = file.readlines()
+	filepathPrinted = False
+	lineNum = 0
+	for line in lines:
+		if (containsDate(line)):
+			if not filepathPrinted:
+				print(filepath + ":")
+				filepathPrinted = True
+			print("line " + str(lineNum) + ": " + line, end="")
+		lineNum += 1
+	if filepathPrinted:
+		print('\n\n')
+
+
+def walkPath(path, ignore):
+	# if the provided path is a file
+	if os.path.isfile(path):
+		if isTextFile(path):
+			if os.path.splitext(path)[1] not in ignore:
+				printFileContents(path)
+		else:
+			print("find-dates: error: file is not a text file")
+
+	# if the provided path is a directory
+	elif os.path.isdir(path):
+		w = walk(path)
+		for (dirpath, dirnames, filenames) in w:
+			for filename in filenames:
+				filepath = dirpath + "/" + filename
+				if os.path.isfile(filepath):
+					if isTextFile(filepath):
+						if os.path.splitext(filepath)[1] not in ignore:
+							printFileContents(filepath)
+
+	# if the provided path is invalid
+	else:
+		print("find-dates: error: no such directory or file: " + path)
+
+
+def run():
+	parser = argparse.ArgumentParser(description="Tool for searching and finding all lines containing dates in a given file or directory.")
+	parser.add_argument('-p', '--path', type=isValidPath, help='Path to file/directory to be searched.')
+	parser.add_argument('-i', '--ignore', type=isValidIgnoreList, help='Comma-separated list of file extensions to ignore. (For example: -i .csv,.html,.js)')
+
+	args = parser.parse_args()
+
+	if not args.path:
+		args.path = os.getcwd()
+	if not args.ignore:
+		args.ignore = []
+
+	walkPath(args.path, args.ignore)
+
+
+
+def main():
+	run()
+
+if __name__ == '__main__':
+	main()
